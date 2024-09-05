@@ -3,7 +3,8 @@ from typing import Any, Callable, List, Optional, Union, Dict, Sequence
 from dataclasses import dataclass, field, asdict
 from transformers import AutoModelForCausalLM, AutoTokenizer, default_data_collator, get_linear_schedule_with_warmup
 from peft import get_peft_config, PeftModel, PeftConfig, get_peft_model, LoraConfig, TaskType
-from transformers import TrainingArguments, Trainer
+from transformers import TrainingArguments as HfTrainingArguments
+from transformers import Trainer, AdamW, IntervalStrategy
 from torch.utils.data import DataLoader, TensorDataset
 from datasets import load_from_disk
 from tqdm import tqdm
@@ -16,7 +17,26 @@ import wandb
 
 #os.environ["WANDB_DISABLED"] = "true"
 # Initialize W&B
-wandb.init(project="sst2-classification")
+wandb.init(project="sst2-classification-final")
+
+@dataclass
+class TrainingArguments(HfTrainingArguments):
+    logging_dir: str = './logs'
+    logging_strategy: IntervalStrategy = IntervalStrategy.EPOCH
+    report_to: str = "wandb"
+    output_dir: str = "top3"
+    evaluation_strategy: IntervalStrategy = IntervalStrategy.EPOCH
+    num_train_epochs: int = 3
+    per_device_eval_batch_size: int = 16
+    learning_rate: float = 2e-05
+    per_device_train_batch_size: int = 16
+    seed: int = 42
+    optimizer: tuple = (AdamW, {"betas": (0.9, 0.999), "eps": 1e-08})
+    lr_scheduler_type: str = "linear"
+
+    def __post_init__(self):
+        super().__post_init__()
+        # Any additional post-initialization logic if needed
 
 @dataclass
 class MiscArguments:
@@ -149,7 +169,7 @@ class ModelFT():
 
         print("Preprocessing dataset")
 
-        processed_test_dataset = self.process_map(self.dataset['validation'])
+        processed_test_dataset = self.process_map(self.dataset['train'])
         self.model = self.model.to(self.device)
         self.model.eval()
 
@@ -169,10 +189,10 @@ class ModelFT():
         wandb.log({"test_accuracy": evaluation_results.metrics["test_accuracy"]})
 
 if __name__ == "__main__":
-        arg_parser = transformers.HfArgumentParser((MiscArguments))
+        arg_parser = transformers.HfArgumentParser((MiscArguments, TrainingArguments))
 
-        train_args, args = TrainingArguments(logging_dir='./logs', logging_strategy = "epoch", report_to="wandb", output_dir="top3", evaluation_strategy="epoch", num_train_epochs = 3, metric_for_best_model = "f1", per_device_eval_batch_size=8), arg_parser.parse_args_into_dataclasses()[0]
-        train_args = train_args.set_save(strategy="steps", total_limit = 2)
+        args, train_args = arg_parser.parse_args_into_dataclasses()
+        train_args = train_args.set_save(strategy="epoch", total_limit = 2)
         print("Initialization...")
         if(args.is_train):
             print("Is training.")
