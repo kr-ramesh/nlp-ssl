@@ -169,7 +169,7 @@ class ModelFT():
 
         print("Preprocessing dataset")
 
-        processed_test_dataset = self.process_map(self.dataset['train'])
+        processed_test_dataset = self.process_map(self.dataset['validation'])
         self.model = self.model.to(self.device)
         self.model.eval()
 
